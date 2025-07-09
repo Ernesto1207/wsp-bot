@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enviar mensaje de WhatsApp</title>
+    <style>
+        /* Estilos generales */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #4CAF50;
+            margin-bottom: 20px;
+        }
+
+        h3 {
+            color: #555;
+        }
+
+        #qr {
+            margin-top: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        /* Cargador (spinner) */
+        .loader {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Estilos de los botones */
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* Estilo del contenedor de respuesta */
+        #response {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #333;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Enviar mensaje de WhatsApp</h1>
+
+    <!-- Mostrar el QR -->
+    <h3>Escanea el QR con tu WhatsApp</h3>
+    <div id="qr"></div>
+
+    <!-- Cargador mientras se espera el QR -->
+    <div id="loading" class="loader"></div>
+
+    <!-- Botón para enviar mensaje (oculto inicialmente) -->
+    <button id="sendMessageButton" style="display: none;">Enviar mensaje</button>
+
+    <!-- Botón para cerrar sesión (oculto inicialmente) -->
+    <button id="logoutButton" style="display: none;">Cerrar sesión</button>
+
+    <div id="response"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io(); // Conectar con el servidor
+        const sendMessageButton = document.getElementById('sendMessageButton');
+        const logoutButton = document.getElementById('logoutButton');
+        const qrElement = document.getElementById('qr');
+        const loadingSpinner = document.getElementById('loading');
+
+        // Verificar si la sesión ya está activa en el frontend
+        if (localStorage.getItem('sessionActive') === 'true') {
+            sendMessageButton.style.display = 'block'; // Mostrar el botón de enviar mensaje si la sesión está activa
+            logoutButton.style.display = 'block'; // Mostrar el botón de logout
+        }
+
+        // Recibir el QR desde el servidor y mostrarlo en el frontend
+        socket.on('qr', (qrBase64) => {
+            qrElement.innerHTML = ''; // Limpiar cualquier QR previo
+            const qrImage = document.createElement('img');
+            qrImage.src = qrBase64; // Asignar el QR en formato Base64
+            qrElement.appendChild(qrImage);
+
+            // Ocultar el cargador
+            loadingSpinner.style.display = 'none';
+
+            // **NO mostrar el botón de enviar mensaje aún**. Esperamos hasta que la sesión esté lista.
+            // Este botón se mostrará solo cuando la sesión esté activa.
+        });
+
+        // Recibir la confirmación de que la sesión está lista
+        socket.on('ready', () => {
+            console.log('El cliente de WhatsApp está listo!');
+            localStorage.setItem('sessionActive', 'true'); // Guardar la sesión como activa
+
+            // Mostrar los botones solo cuando la sesión esté lista
+            sendMessageButton.style.display = 'block'; // Asegurarnos de que el botón de enviar esté visible
+            logoutButton.style.display = 'block'; // Mostrar el botón de logout
+            qrElement.style.display = 'none'; // Ocultar el QR una vez que la sesión esté lista
+        });
+
+        // Manejar el clic en el botón para enviar el mensaje
+        sendMessageButton.addEventListener('click', async function () {
+            try {
+                // Enviar solicitud al backend para enviar el mensaje
+                const response = await fetch('/send-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    alert('¡Mensaje enviado correctamente!');
+                } else {
+                    alert('Error al enviar el mensaje: ' + data.message);
+                }
+            } catch (error) {
+                alert('Hubo un error: ' + error.message);
+            }
+        });
+
+        // Manejar el clic en el botón para cerrar sesión
+        logoutButton.addEventListener('click', async function () {
+            try {
+                // Mostrar el cargador mientras cerramos sesión
+                loadingSpinner.style.display = 'block';
+
+                // Ocultar los botones mientras se cierra la sesión
+                sendMessageButton.style.display = 'none';
+                logoutButton.style.display = 'none';
+
+                // Enviar solicitud al backend para destruir la sesión
+                const response = await fetch('/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    alert('Sesión cerrada exitosamente.');
+                    localStorage.removeItem('sessionActive'); // Eliminar el estado de la sesión
+                    sendMessageButton.style.display = 'none'; // Ocultar el botón de enviar mensaje
+                    logoutButton.style.display = 'none'; // Ocultar el botón de logout
+                    qrElement.innerHTML = ''; // Limpiar el QR
+                    qrElement.style.display = 'block'; // Mostrar el contenedor del QR para que se pueda generar uno nuevo
+
+                    // Esperar un momento para reiniciar y generar un nuevo QR
+                    setTimeout(() => {
+                        loadingSpinner.style.display = 'none'; // Ocultar el cargador después de cerrar sesión
+                    }, 2000);
+                } else {
+                    alert('Hubo un problema al cerrar sesión.');
+                }
+            } catch (error) {
+                alert('Hubo un error al cerrar sesión: ' + error.message);
+                loadingSpinner.style.display = 'none'; // Ocultar cargador en caso de error
+            }
+        });
+    </script>
+</body>
+
+</html>
