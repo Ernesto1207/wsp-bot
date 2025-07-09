@@ -13,7 +13,10 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 let client = new Client({
-    authStrategy: new LocalAuth()
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    },
 });
 
 let isWhatsAppReady = false;
